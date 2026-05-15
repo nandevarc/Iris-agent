@@ -14,20 +14,29 @@ import os
 # ENV
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# OPENAI CLIENT
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    base_url=OPENAI_BASE_URL,
+)
 
 # FLASK
 app = Flask(__name__)
 
-# TELEGRAM
+# TELEGRAM APP
 telegram_app = Application.builder().token(TOKEN).build()
 
-# COMMAND START
+# EVENT LOOP GLOBAL
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+# START COMMAND
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot aktif.")
 
-# CHAT AI
+# CHAT FUNCTION
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
 
@@ -37,13 +46,19 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful AI assistant.",
+                    "content": (
+                        "Kamu adalah Hypatia, AI assistant Telegram. "
+                        "Gunakan bahasa Indonesia santai, natural, "
+                        "jelas, singkat, dan membantu."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": user_message,
                 },
             ],
+            temperature=0.7,
+            max_tokens=500,
         )
 
         reply = response.choices[0].message.content
@@ -53,22 +68,26 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
-# HANDLER
+# HANDLERS
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, chat)
 )
 
+# INIT TELEGRAM
+loop.run_until_complete(telegram_app.initialize())
+
 # WEBHOOK
 @app.post(f"/{TOKEN}")
 def webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+    update = Update.de_json(
+        request.get_json(force=True),
+        telegram_app.bot
+    )
 
-    async def process():
-        await telegram_app.initialize()
-        await telegram_app.process_update(update)
-
-    asyncio.run(process())
+    loop.run_until_complete(
+        telegram_app.process_update(update)
+    )
 
     return "ok"
 
