@@ -1,35 +1,49 @@
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, MessageHandler, filters
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 from openai import OpenAI
+import asyncio
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")
-API_KEY = os.getenv("API_KEY")
+# ENV
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-bot = Bot(token=TOKEN)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-client = OpenAI(
-    api_key=API_KEY,
-    base_url="https://api.freemodel.dev/v1"
-)
-
+# FLASK
 app = Flask(__name__)
 
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0)
+# TELEGRAM
+telegram_app = Application.builder().token(TOKEN).build()
 
-async def chat(update, context):
+# COMMAND START
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Bot aktif.")
+
+# CHAT AI
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+
     try:
-        text = update.message.text
-
         response = client.chat.completions.create(
-            model="gpt-5.5",
+            model="gpt-4.1-mini",
             messages=[
                 {
+                    "role": "system",
+                    "content": "You are a helpful AI assistant.",
+                },
+                {
                     "role": "user",
-                    "content": text
-                }
-            ]
+                    "content": user_message,
+                },
+            ],
         )
 
         reply = response.choices[0].message.content
@@ -39,19 +53,31 @@ async def chat(update, context):
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
-dispatcher.add_handler(
-    MessageHandler(filters.TEXT, chat)
+# HANDLER
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(
+    MessageHandler(filters.TEXT & ~filters.COMMAND, chat)
 )
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+# WEBHOOK
+@app.post(f"/{TOKEN}")
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
+    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+
+    async def process():
+        await telegram_app.initialize()
+        await telegram_app.process_update(update)
+
+    asyncio.run(process())
+
     return "ok"
 
-@app.route("/")
+# ROOT
+@app.get("/")
 def home():
     return "Bot running"
 
+# RUN
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
