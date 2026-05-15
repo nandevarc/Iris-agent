@@ -3,7 +3,8 @@ from telegram.ext import (
     ApplicationBuilder,
     MessageHandler,
     filters,
-    ContextTypes
+    ContextTypes,
+    CommandHandler
 )
 
 from openai import OpenAI
@@ -14,27 +15,39 @@ client = OpenAI(
     base_url="https://api.freemodel.dev/v1"
 )
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Bot aktif.")
+
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    try:
+        text = update.message.text
 
-    response = client.chat.completions.create(
-        model="gpt-5.5",
-        messages=[
-            {"role": "user", "content": text}
-        ]
-    )
+        response = client.chat.completions.create(
+            model="gpt-5.5",
+            messages=[
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ]
+        )
 
-    reply = response.choices[0].message.content
+        reply = response.choices[0].message.content
 
-    await update.message.reply_text(reply)
+        await update.message.reply_text(reply)
+
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
 
 app = ApplicationBuilder().token(
     os.getenv("BOT_TOKEN")
 ).build()
 
+app.add_handler(CommandHandler("start", start))
+
 app.add_handler(
-    MessageHandler(filters.ALL, chat)
+    MessageHandler(filters.TEXT, chat)
 )
 
 print("Bot running...")
-app.run_polling()
+app.run_polling(drop_pending_updates=True)
