@@ -33,7 +33,7 @@ app = ApplicationBuilder().token(
 ).build()
 
 app.add_handler(
-    MessageHandler(filters.TEXT & ~filters.COMMAND, chat)
+    MessageHandler(filters.ALL, chat)
 )
 
 print("Bot running...")
